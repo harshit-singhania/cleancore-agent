@@ -5,7 +5,26 @@ __pycache__/
 backend/venv/
 .env
 
+# Development script
+*.sh
+
+# Agentic Workflow 
+.agent/
+.gsd/ 
+adapters/
+scripts/ 
+.plans/
+
+scripts
+.gemini
+docs
+
+model_capabilities.yaml 
+PROJECT_RULES.md
+GSD-STYLE.md 
+
 # Node
 frontend/node_modules/
 frontend/dist/
 .DS_Store
+

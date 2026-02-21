@@ -4,6 +4,7 @@ __pycache__/
 *.class
 backend/venv/
 .env
+.env.local
 
 # Development script
 *.sh

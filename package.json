@@ -1,0 +1,31 @@
+{
+  "name": "cleancore",
+  "version": "1.0.0",
+  "description": "**Automated SAP ABAP to S/4HANA Code Modernization using AI.**",
+  "main": "index.js",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/harshit-singhania/cleancore-agent.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/harshit-singhania/cleancore-agent/issues"
+  },
+  "homepage": "https://github.com/harshit-singhania/cleancore-agent#readme",
+  "devDependencies": {
+    "dotenv": "^17.3.1",
+    "prisma": "^7.4.1"
+  },
+  "dependencies": {
+    "@prisma/client": "^7.4.1"
+  }
+}

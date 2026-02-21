@@ -10,7 +10,8 @@ backend/venv/
 
 # Agentic Workflow 
 .agent/
-.gsd/ 
+.agents/
+.gsd/
 adapters/
 scripts/ 
 .plans/
@@ -27,4 +28,10 @@ GSD-STYLE.md
 frontend/node_modules/
 frontend/dist/
 .DS_Store
+node_modules
+
+/generated/prisma
+
+.colima
+.qdrant
 

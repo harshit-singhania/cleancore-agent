@@ -1,0 +1,154 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Multi-tenant Organization model
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  users    User[]
+  projects ModernizationProject[]
+
+  @@map("organizations")
+}
+
+// User model for authentication and organization membership
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  password      String?   // For credential-based auth, nullable for OAuth
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Multi-tenant relation
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+
+  // Relations
+  projectsCreated ModernizationProject[] @relation("CreatedBy")
+
+  @@map("users")
+}
+
+// Modernization Project to track code modernization initiatives
+model ModernizationProject {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  status      ProjectStatus @default(ACTIVE)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Multi-tenant relation
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  // Creator relation
+  createdById String
+  createdBy   User     @relation("CreatedBy", fields: [createdById], references: [id], onDelete: Cascade)
+
+  // Relations
+  codeObjects CodeObject[]
+
+  @@map("modernization_projects")
+}
+
+enum ProjectStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  ARCHIVED
+}
+
+// Code Object model to track individual ABAP code objects
+model CodeObject {
+  id            String   @id @default(cuid())
+  name          String
+  description   String?
+  abapObjectType String // e.g., "PROG", "CLAS", "FUGR", etc.
+  legacyLoc     Int      @default(0) // Legacy Lines of Code
+  sourceCode    String?  @db.Text
+  status        CodeObjectStatus @default(PENDING)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Project relation
+  projectId String
+  project   ModernizationProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  // Relations
+  translationResults TranslationResult[]
+
+  @@map("code_objects")
+}
+
+enum CodeObjectStatus {
+  PENDING
+  ANALYZING
+  TRANSLATING
+  REVIEWING
+  COMPLETED
+  FAILED
+}
+
+// Translation Result model to track AI translation outputs
+model TranslationResult {
+  id              String   @id @default(cuid())
+  originalCode    String   @db.Text
+  translatedCode  String   @db.Text
+  tokenCount      Int      @default(0) // Token count used/produced
+  processingType  String // e.g., "rag-augmented", "direct-translation"
+  complianceScore Float? // Optional compliance score (0-100)
+  feedback        String?  @db.Text // Human feedback/review notes
+  status          TranslationStatus @default(DRAFT)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  // Code Object relation
+  codeObjectId String
+  codeObject   CodeObject @relation(fields: [codeObjectId], references: [id], onDelete: Cascade)
+
+  @@map("translation_results")
+}
+
+enum TranslationStatus {
+  DRAFT
+  REVIEWING
+  APPROVED
+  REJECTED
+}
+
+// SAP Document model for RAG context mapping
+model SAPDocument {
+  id          String   @id @default(cuid())
+  title       String
+  content     String   @db.Text // Original document content
+  sourceUrl   String? // Original SAP documentation URL
+  qdrantId    String   @unique // Alignment with Qdrant vector storage
+  chunkIndex  Int      @default(0) // For chunked documents
+  totalChunks Int      @default(1)
+  metadata    Json? // Flexible metadata storage
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([qdrantId])
+  @@map("sap_documents")
+}

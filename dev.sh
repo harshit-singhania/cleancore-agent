@@ -18,12 +18,14 @@ BOLD='\033[1m'
 # Configuration
 BACKEND_DIR="backend"
 FRONTEND_DIR="frontend"
-BACKEND_PORT=8000
+BACKEND_PORT=8080
 FRONTEND_PORT=5173
 BACKEND_PID_FILE=".dev/backend.pid"
 FRONTEND_PID_FILE=".dev/frontend.pid"
 BACKEND_LOG=".dev/backend.log"
 FRONTEND_LOG=".dev/frontend.log"
+QDRANT_PORT=6333
+QDRANT_GRPC_PORT=6334
 
 # Create .dev directory for logs and PIDs
 mkdir -p .dev
@@ -242,10 +244,124 @@ stop_frontend() {
     rm -f "$FRONTEND_PID_FILE"
 }
 
+# Check if Colima is running
+colima_running() {
+    if colima status 2>/dev/null | grep -q "Running"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Check if Qdrant is running
+qdrant_running() {
+    if curl -s http://localhost:$QDRANT_PORT/ >/dev/null 2>&1; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Start Colima
+start_colima() {
+    if colima_running; then
+        print_success "Colima is already running"
+        return 0
+    fi
+    
+    print_info "Starting Colima (Docker runtime)..."
+    if colima start; then
+        print_success "Colima started successfully"
+        return 0
+    else
+        print_error "Failed to start Colima"
+        return 1
+    fi
+}
+
+# Stop Colima
+stop_colima() {
+    if ! colima_running; then
+        print_warning "Colima is not running"
+        return 0
+    fi
+    
+    print_info "Stopping Colima..."
+    if colima stop; then
+        print_success "Colima stopped"
+        return 0
+    else
+        print_error "Failed to stop Colima"
+        return 1
+    fi
+}
+
+# Start Qdrant
+start_qdrant() {
+    if qdrant_running; then
+        print_success "Qdrant is already running (Port: $QDRANT_PORT)"
+        return 0
+    fi
+    
+    if ! colima_running; then
+        print_warning "Colima is not running. Starting it first..."
+        if ! start_colima; then
+            return 1
+        fi
+    fi
+    
+    print_info "Starting Qdrant container..."
+    if docker-compose up -d qdrant; then
+        sleep 2
+        if qdrant_running; then
+            print_success "Qdrant started successfully (Port: $QDRANT_PORT)"
+            return 0
+        else
+            print_error "Qdrant container started but not responding"
+            return 1
+        fi
+    else
+        print_error "Failed to start Qdrant"
+        return 1
+    fi
+}
+
+# Stop Qdrant
+stop_qdrant() {
+    if ! qdrant_running; then
+        print_warning "Qdrant is not running"
+        return 0
+    fi
+    
+    print_info "Stopping Qdrant..."
+    if docker-compose down; then
+        print_success "Qdrant stopped"
+        return 0
+    else
+        print_error "Failed to stop Qdrant"
+        return 1
+    fi
+}
+
 # Show status
 show_status() {
     echo -e "${BOLD}Server Status:${NC}"
     echo ""
+    
+    # Colima status
+    if colima_running; then
+        echo -e "  ${GREEN}●${NC} Colima     ${GREEN}running${NC}"
+    else
+        echo -e "  ${RED}●${NC} Colima     ${RED}stopped${NC}"
+    fi
+    
+    # Qdrant status
+    if qdrant_running; then
+        local qdrant_version=$(curl -s http://localhost:$QDRANT_PORT/ | grep -o '"version":"[^"]*"' | cut -d'"' -f4)
+        echo -e "  ${GREEN}●${NC} Qdrant     ${GREEN}running${NC} (Port: $QDRANT_PORT, Version: $qdrant_version)"
+    else
+        echo -e "  ${RED}●${NC} Qdrant     ${RED}stopped${NC}"
+    fi
     
     # Backend status
     local backend_pid=$(get_pid "$BACKEND_PID_FILE")
@@ -273,8 +389,12 @@ show_status() {
     
     echo ""
     
-    if is_running "$backend_pid" || is_running "$frontend_pid"; then
+    if is_running "$backend_pid" || is_running "$frontend_pid" || qdrant_running; then
         print_info "Quick URLs:"
+        if qdrant_running; then
+            echo "  Qdrant REST:  http://localhost:$QDRANT_PORT"
+            echo "  Qdrant gRPC:  localhost:$QDRANT_GRPC_PORT"
+        fi
         if is_running "$backend_pid"; then
             echo "  Backend API:  http://localhost:$BACKEND_PORT"
             echo "  API Docs:     http://localhost:$BACKEND_PORT/docs"
@@ -355,24 +475,32 @@ show_help() {
     echo -e "${BOLD}Usage:${NC} ./dev.sh [command] [options]"
     echo ""
     echo -e "${BOLD}Commands:${NC}"
-    echo "  start        Start development servers"
-    echo "  stop         Stop development servers"
-    echo "  restart      Restart development servers"
-    echo "  status       Show server status"
-    echo "  logs         Show recent logs"
-    echo "  follow       Follow logs in real-time"
-    echo "  clean        Stop servers and clean up log/PID files"
-    echo "  open         Open browser to the frontend app"
-    echo "  help         Show this help message"
+    echo "  start              Start development servers"
+    echo "  stop               Stop development servers"
+    echo "  restart            Restart development servers"
+    echo "  status             Show server status"
+    echo "  logs               Show recent logs"
+    echo "  follow             Follow logs in real-time"
+    echo "  clean              Stop servers and clean up log/PID files"
+    echo "  open               Open browser to the frontend app"
+    echo ""
+    echo -e "${BOLD}Infrastructure Commands:${NC}"
+    echo "  colima-start       Start Colima (Docker runtime)"
+    echo "  colima-stop        Stop Colima"
+    echo "  qdrant-start       Start Qdrant vector database"
+    echo "  qdrant-stop        Stop Qdrant"
+    echo "  infra-start        Start all infrastructure (Colima + Qdrant)"
+    echo "  infra-stop         Stop all infrastructure"
     echo ""
     echo -e "${BOLD}Options:${NC}"
-    echo "  --backend-only    Only operate on backend server"
-    echo "  --frontend-only   Only operate on frontend server"
-    echo "  -n, --lines NUM   Number of log lines to show (default: 50)"
+    echo "  --backend-only     Only operate on backend server"
+    echo "  --frontend-only    Only operate on frontend server"
+    echo "  -n, --lines NUM    Number of log lines to show (default: 50)"
     echo ""
     echo -e "${BOLD}Examples:${NC}"
     echo "  ./dev.sh start                    # Start both servers"
     echo "  ./dev.sh start --backend-only     # Start only backend"
+    echo "  ./dev.sh infra-start              # Start Colima + Qdrant"
     echo "  ./dev.sh logs -n 100              # Show last 100 log lines"
     echo "  ./dev.sh follow --backend-only    # Follow backend logs"
     echo "  ./dev.sh open                     # Open frontend in browser"
@@ -502,6 +630,44 @@ main() {
             
         open)
             open_browser "http://localhost:$FRONTEND_PORT"
+            ;;
+            
+        colima-start)
+            print_header
+            start_colima
+            ;;
+            
+        colima-stop)
+            print_header
+            stop_colima
+            ;;
+            
+        qdrant-start)
+            print_header
+            start_qdrant
+            ;;
+            
+        qdrant-stop)
+            print_header
+            stop_qdrant
+            ;;
+            
+        infra-start)
+            print_header
+            start_colima
+            echo ""
+            start_qdrant
+            echo ""
+            show_status
+            ;;
+            
+        infra-stop)
+            print_header
+            stop_qdrant
+            echo ""
+            stop_colima
+            echo ""
+            show_status
             ;;
             
         help|--help|-h)
